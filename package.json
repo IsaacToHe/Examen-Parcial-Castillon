@@ -1,0 +1,14 @@
+{
+  "name": "sistemas-web-sstdd",
+  "version": "1.0.0",
+  "description": "Sistemas Web Veterinaria y Samar Importadora para Examen Parcial SSTDD",
+  "scripts": {
+    "setup": "npm --prefix veterinaria install && npm --prefix samar install",
+    "seed-users": "node scripts/seed-users.js",
+    "start:vet": "node veterinaria/server.js",
+    "start:samar": "node samar/server.js"
+  },
+  "dependencies": {
+    "mssql": "^11.0.1"
+  }
+}

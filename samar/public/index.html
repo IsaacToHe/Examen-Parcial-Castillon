@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Samar Importadora - Sistema Comercial OLTP & ETL en Tiempo Real</title>
+  <meta name="description" content="Sistema Web Samar Importadora con Login y 2 CRUDs (Clientes y Artículos) conectado a ETL en tiempo real">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ==================== PANTALLA DE LOGIN ==================== -->
+  <div id="login-container" class="login-wrapper">
+    <div class="login-card glass-panel">
+      <div class="login-brand">
+        <div class="brand-icon">📦</div>
+        <h2>Samar Importadora</h2>
+        <p class="subtitle">Sistema Comercial OLTP & Replicación a BD_CONSOLIDADO</p>
+      </div>
+
+      <div id="login-alert" class="alert hidden"></div>
+
+      <form id="form-login" class="login-form">
+        <div class="form-group">
+          <label for="login-user">Usuario Comercial</label>
+          <div class="input-with-icon">
+            <span class="icon">👤</span>
+            <input type="text" id="login-user" placeholder="Ej. admin" required autocomplete="username">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="login-pass">Contraseña</label>
+          <div class="input-with-icon">
+            <span class="icon">🔒</span>
+            <input type="password" id="login-pass" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+        </div>
+
+        <button type="submit" id="btn-login" class="btn btn-primary btn-block">
+          <span>Ingresar a Samar Importadora</span>
+          <span class="arrow">➔</span>
+        </button>
+
+        <div class="login-helpers">
+          <p>Credenciales de evaluación:</p>
+          <div class="helper-chips">
+            <button type="button" class="chip" onclick="fillLogin('admin', 'admin')">admin / admin</button>
+            <button type="button" class="chip" onclick="fillLogin('castillon', 'admin')">castillon / admin</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="login-footer">
+        <span>UPSJB - Sistemas de Soporte para la Toma de Decisiones 2026</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PANEL PRINCIPAL ==================== -->
+  <div id="app-container" class="app-layout hidden">
+    <!-- Barra Superior -->
+    <header class="app-header glass-header">
+      <div class="header-left">
+        <div class="logo-badge">🚢</div>
+        <div>
+          <h1 class="system-title">SAMAR IMPORTADORA <span class="tag-oltp">OLTP</span></h1>
+          <p class="header-desc">SSTDD 2026 - Conexión directa a SamarImportadora & DW</p>
+        </div>
+      </div>
+
+      <!-- Indicador ETL en Tiempo Real -->
+      <div class="etl-live-badge" title="Los triggers en SQL Server replican cada inserción/edición al instante">
+        <span class="pulse-dot"></span>
+        <div class="etl-info">
+          <strong>ETL Tiempo Real Activo</strong>
+          <small>Triggers ➔ BD_CONSOLIDADO ➔ Power BI</small>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="user-pill">
+          <span class="user-avatar">👤</span>
+          <span id="display-user-name">Administrador Samar</span>
+        </div>
+        <button id="btn-logout" class="btn btn-outline-danger btn-sm" onclick="logout()">
+          Cerrar Sesión
+        </button>
+      </div>
+    </header>
+
+    <!-- Barra de Navegación de Pestañas -->
+    <nav class="nav-tabs-bar">
+      <button class="nav-tab active" id="tab-btn-clientes" onclick="switchTab('clientes')">
+        <span class="tab-icon">👥</span>
+        <span>CRUD 1: Cartera de Clientes</span>
+      </button>
+      <button class="nav-tab" id="tab-btn-articulos" onclick="switchTab('articulos')">
+        <span class="tab-icon">🏷️</span>
+        <span>CRUD 2: Artículos y Productos</span>
+      </button>
+      <button class="nav-tab" id="tab-btn-etl" onclick="switchTab('etl')">
+        <span class="tab-icon">⚡</span>
+        <span>Monitor de Replicación ETL</span>
+      </button>
+    </nav>
+
+    <!-- Resumen de Métricas Rápidas -->
+    <section class="stats-ribbon">
+      <div class="stat-card">
+        <span class="stat-num" id="stat-clientes">--</span>
+        <span class="stat-label">Clientes en Base OLTP</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num" id="stat-articulos">--</span>
+        <span class="stat-label">Artículos Importados</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num" id="stat-dw">--</span>
+        <span class="stat-label">Dimensión Clientes (DW OLAP)</span>
+      </div>
+      <div class="stat-card stat-accent">
+        <span class="stat-num" id="stat-consolidado">--</span>
+        <span class="stat-label">Sincronizados en BD_CONSOLIDADO</span>
+      </div>
+    </section>
+
+    <!-- Contenido Principal -->
+    <main class="app-main">
+
+      <!-- ================= SECCIÓN CLIENTES (CRUD 1) ================= -->
+      <section id="section-clientes" class="tab-content active">
+        
+        <div class="toolbar-card glass-panel">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-clientes" placeholder="BUSCAR: Código (CLI00001), Nombre, Apellido o Residencia..." oninput="debounceSearchClientes()">
+          </div>
+          <div class="actions-group">
+            <button class="btn btn-success" onclick="abrirModalCliente('nuevo')">
+              <span>➕ NUEVO CLIENTE</span>
+            </button>
+            <button class="btn btn-outline" onclick="cargarClientes()">
+              <span>🔄 Refrescar</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container glass-panel">
+          <div class="table-header-info">
+            <h3>Grilla de Clientes (Tabla: samar.CLIENTES)</h3>
+            <span class="table-badge" id="clientes-count">Cargando registros...</span>
+          </div>
+          <div class="responsive-table">
+            <table class="data-table" id="table-clientes">
+              <thead>
+                <tr>
+                  <th>CÓDIGO CLIENTE</th>
+                  <th>NOMBRE</th>
+                  <th>APELLIDO</th>
+                  <th>EDAD</th>
+                  <th>ESTADO CIVIL</th>
+                  <th>RESIDENCIA</th>
+                  <th>ORIGEN</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-clientes">
+                <tr><td colspan="8" class="text-center">Cargando datos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ================= SECCIÓN ARTÍCULOS (CRUD 2) ================= -->
+      <section id="section-articulos" class="tab-content">
+        
+        <div class="toolbar-card glass-panel">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-articulos" placeholder="BUSCAR: Código (ART0001), Nombre o Categoría..." oninput="debounceSearchArticulos()">
+          </div>
+          <div class="actions-group">
+            <button class="btn btn-success" onclick="abrirModalArticulo('nuevo')">
+              <span>➕ NUEVO ARTÍCULO</span>
+            </button>
+            <button class="btn btn-outline" onclick="cargarArticulos()">
+              <span>🔄 Refrescar</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container glass-panel">
+          <div class="table-header-info">
+            <h3>Grilla de Artículos (Tabla: samar.ARTICULOS)</h3>
+            <span class="table-badge" id="articulos-count">Cargando artículos...</span>
+          </div>
+          <div class="responsive-table">
+            <table class="data-table" id="table-articulos">
+              <thead>
+                <tr>
+                  <th>CÓDIGO PRODUCTO</th>
+                  <th>NOMBRE DEL ARTÍCULO</th>
+                  <th>CATEGORÍA</th>
+                  <th>PRECIO UNITARIO ($)</th>
+                  <th>COSTO UNITARIO ($)</th>
+                  <th>MARGEN ESTIMADO ($)</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-articulos">
+                <tr><td colspan="7" class="text-center">Cargando datos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ================= SECCIÓN MONITOR ETL ================= -->
+      <section id="section-etl" class="tab-content">
+        <div class="glass-panel monitor-card">
+          <h2>📊 Flujo ETL Automático Samar (OLTP ➔ OLAP Consolidado ➔ Power BI)</h2>
+          <p class="monitor-intro">
+            Al registrar o editar clientes y artículos en Samar Importadora, los triggers <code>TRG_ETL_CLIENTES</code> y <code>TRG_ETL_ARTICULOS</code> normalizan los datos y los replican en <code>BD_CONSOLIDADO</code> para consumo en los Dashboards de Power BI.
+          </p>
+
+          <div class="flow-diagram">
+            <div class="flow-step">
+              <div class="step-icon">🛒</div>
+              <h4>1. Web Samar</h4>
+              <p>CRUD Clientes / Artículos</p>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div class="flow-step">
+              <div class="step-icon">🗄️</div>
+              <h4>2. BD SamarImportadora</h4>
+              <p>Inserción en <code>samar.CLIENTES</code></p>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div class="flow-step pulse-step">
+              <div class="step-icon">⚡</div>
+              <h4>3. Trigger Replicador</h4>
+              <p>Limpia espacios y caracteres</p>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div class="flow-step">
+              <div class="step-icon">📦</div>
+              <h4>4. BD Consolidada</h4>
+              <p>Destino <code>CLIENTE_CONSOLIDADO</code></p>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div class="flow-step highlight-step">
+              <div class="step-icon">📈</div>
+              <h4>5. Power BI DirectQuery</h4>
+              <p>Actualización en vivo en la nube</p>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <button class="btn btn-primary" onclick="cargarMetricas()">
+              🔄 Probar y Actualizar Métricas de Replicación
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ==================== MODAL FORMULARIO CLIENTE ==================== -->
+  <div id="modal-cliente" class="modal-backdrop hidden">
+    <div class="modal-box glass-panel modal-lg">
+      <div class="modal-header">
+        <h2 id="modal-cliente-title">REGISTRO DE CLIENTE - SAMAR</h2>
+        <button type="button" class="btn-close" onclick="cerrarModalCliente()">✕</button>
+      </div>
+
+      <form id="form-cliente" onsubmit="guardarCliente(event)">
+        <div class="form-grid">
+          <!-- CÓDIGO CLIENTE -->
+          <div class="form-group">
+            <label for="c-id">CÓDIGO CLIENTE</label>
+            <input type="text" id="c-id" placeholder="Autogenerado (Ej: CLI01001)">
+            <small style="color:var(--text-muted);font-size:0.75rem;">Dejar vacío para correlativo automático</small>
+          </div>
+
+          <!-- EDAD -->
+          <div class="form-group">
+            <label for="c-edad">EDAD</label>
+            <input type="number" id="c-edad" min="1" max="120" placeholder="Ej: 35">
+          </div>
+
+          <!-- NOMBRE -->
+          <div class="form-group">
+            <label for="c-nombre">NOMBRE <span class="req">*</span></label>
+            <input type="text" id="c-nombre" required placeholder="Ej: Gonzalo">
+          </div>
+
+          <!-- APELLIDO -->
+          <div class="form-group">
+            <label for="c-apellido">APELLIDO <span class="req">*</span></label>
+            <input type="text" id="c-apellido" required placeholder="Ej: Contreras">
+          </div>
+
+          <!-- ESTADO CIVIL -->
+          <div class="form-group">
+            <label for="c-estcivil">ESTADO CIVIL</label>
+            <select id="c-estcivil">
+              <option value="Soltero">Soltero</option>
+              <option value="Casado">Casado</option>
+              <option value="Divorciado">Divorciado</option>
+              <option value="Viudo">Viudo</option>
+            </select>
+          </div>
+
+          <!-- RESIDENCIA -->
+          <div class="form-group">
+            <label for="c-residencia">CIUDAD / RESIDENCIA</label>
+            <input type="text" id="c-residencia" placeholder="Ej: Santiago / Santa Juana">
+          </div>
+
+          <!-- ORIGEN -->
+          <div class="form-group span-2">
+            <label for="c-origen">LUGAR DE ORIGEN</label>
+            <input type="text" id="c-origen" placeholder="Ej: Maitencillo / Concepción">
+          </div>
+        </div>
+
+        <div class="modal-footer-toolbar">
+          <div class="footer-left">
+            <button type="button" class="btn btn-secondary" onclick="limpiarFormCliente()">NUEVO</button>
+            <button type="submit" class="btn btn-primary" id="btn-c-guardar">GUARDAR</button>
+            <button type="button" class="btn btn-danger" id="btn-c-eliminar" onclick="eliminarClienteActual()">ELIMINAR</button>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-outline" onclick="limpiarFormCliente()">CANCELAR</button>
+            <button type="button" class="btn btn-dark" onclick="cerrarModalCliente()">SALIR</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL FORMULARIO ARTÍCULO ==================== -->
+  <div id="modal-articulo" class="modal-backdrop hidden">
+    <div class="modal-box glass-panel">
+      <div class="modal-header">
+        <h2 id="modal-articulo-title">REGISTRO DE ARTÍCULO - SAMAR</h2>
+        <button type="button" class="btn-close" onclick="cerrarModalArticulo()">✕</button>
+      </div>
+
+      <form id="form-articulo" onsubmit="guardarArticulo(event)">
+        <div class="form-group">
+          <label for="a-cod">CÓDIGO PRODUCTO</label>
+          <input type="text" id="a-cod" placeholder="Autogenerado (Ej: ART0078)">
+        </div>
+
+        <div class="form-group">
+          <label for="a-nombre">NOMBRE DEL ARTÍCULO <span class="req">*</span></label>
+          <input type="text" id="a-nombre" required placeholder="Ej: Té Dharamsala (caja 20 bolsas)">
+        </div>
+
+        <div class="form-group">
+          <label for="a-categoria">CATEGORÍA</label>
+          <select id="a-categoria">
+            <option value="Bebidas">Bebidas</option>
+            <option value="Carnes">Carnes</option>
+            <option value="Condimentos">Condimentos</option>
+            <option value="Frutas/Verduras">Frutas/Verduras</option>
+            <option value="Granos/Cereales">Granos/Cereales</option>
+            <option value="Lácteos">Lácteos</option>
+            <option value="Pescado/Marisco">Pescado/Marisco</option>
+            <option value="Repostería">Repostería</option>
+          </select>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="a-precio">PRECIO UNITARIO ($) <span class="req">*</span></label>
+            <input type="number" id="a-precio" required min="0" placeholder="1000">
+          </div>
+          <div class="form-group">
+            <label for="a-costo">COSTO UNITARIO ($)</label>
+            <input type="number" id="a-costo" min="0" placeholder="600">
+          </div>
+        </div>
+
+        <div class="modal-footer-toolbar">
+          <div class="footer-left">
+            <button type="button" class="btn btn-secondary" onclick="limpiarFormArticulo()">NUEVO</button>
+            <button type="submit" class="btn btn-primary">GUARDAR</button>
+            <button type="button" class="btn btn-danger" id="btn-a-eliminar" onclick="eliminarArticuloActual()">ELIMINAR</button>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-dark" onclick="cerrarModalArticulo()">SALIR</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

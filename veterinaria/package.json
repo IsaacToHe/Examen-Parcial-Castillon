@@ -1,0 +1,13 @@
+{
+  "name": "sistema-veterinaria",
+  "version": "1.0.0",
+  "description": "Sistema Web Veterinaria con Login y 2 CRUDs (Personas y Productos) - ETL OLTP/OLAP",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "mssql": "^11.0.1"
+  }
+}
