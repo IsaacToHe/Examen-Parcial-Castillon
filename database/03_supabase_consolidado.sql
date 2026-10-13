@@ -300,8 +300,39 @@ ALTER TABLE cliente_consolidado DISABLE ROW LEVEL SECURITY;
 ALTER TABLE producto_consolidado DISABLE ROW LEVEL SECURITY;
 ALTER TABLE usuario_web DISABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "p_all_vet_distrito" ON vet_distrito;
+CREATE POLICY "p_all_vet_distrito" ON vet_distrito FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_vet_categoria" ON vet_categoria;
+CREATE POLICY "p_all_vet_categoria" ON vet_categoria FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_vet_unidad_medida" ON vet_unidad_medida;
+CREATE POLICY "p_all_vet_unidad_medida" ON vet_unidad_medida FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_vet_persona" ON vet_persona;
+CREATE POLICY "p_all_vet_persona" ON vet_persona FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_vet_producto" ON vet_producto;
+CREATE POLICY "p_all_vet_producto" ON vet_producto FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_samar_clientes" ON samar_clientes;
+CREATE POLICY "p_all_samar_clientes" ON samar_clientes FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_samar_articulos" ON samar_articulos;
+CREATE POLICY "p_all_samar_articulos" ON samar_articulos FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_cliente_consolidado" ON cliente_consolidado;
+CREATE POLICY "p_all_cliente_consolidado" ON cliente_consolidado FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_producto_consolidado" ON producto_consolidado;
+CREATE POLICY "p_all_producto_consolidado" ON producto_consolidado FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "p_all_usuario_web" ON usuario_web;
+CREATE POLICY "p_all_usuario_web" ON usuario_web FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
 
 -- Datos: vet_distrito
 INSERT INTO vet_distrito (iddistrito, nomdistrito) VALUES

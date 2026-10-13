@@ -57,7 +57,15 @@ async function handleLogin(e) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usuario, clave })
     });
-    const data = await res.json();
+    
+    let data;
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+      throw new Error(`Error ${res.status}: Respuesta no válida del servidor.`);
+    }
 
     if (!res.ok || !data.ok) {
       throw new Error(data.error || 'Credenciales inválidas');

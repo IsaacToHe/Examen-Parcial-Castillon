@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Veterinaria Castillon - Sistema OLTP & ETL en Tiempo Real</title>
+  <meta name="description" content="Sistema Web Veterinaria con Login y 2 CRUDs (Personas y Productos) conectado a ETL OLTP/OLAP en tiempo real">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ==================== PANTALLA DE LOGIN ==================== -->
+  <div id="login-container" class="login-wrapper">
+    <div class="login-card glass-panel">
+      <div class="login-brand">
+        <div class="brand-icon">🐾</div>
+        <h2>Veterinaria Castillon</h2>
+        <p class="subtitle">Sistema OLTP & Replicación ETL a BD_CONSOLIDADO</p>
+      </div>
+
+      <div id="login-alert" class="alert hidden"></div>
+
+      <form id="form-login" class="login-form">
+        <div class="form-group">
+          <label for="login-user">Usuario</label>
+          <div class="input-with-icon">
+            <span class="icon">👤</span>
+            <input type="text" id="login-user" placeholder="Ej. admin" required autocomplete="username">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="login-pass">Contraseña</label>
+          <div class="input-with-icon">
+            <span class="icon">🔒</span>
+            <input type="password" id="login-pass" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+        </div>
+
+        <button type="submit" id="btn-login" class="btn btn-primary btn-block">
+          <span>Ingresar al Sistema</span>
+          <span class="arrow">➔</span>
+        </button>
+
+        <div class="login-helpers">
+          <p>Credenciales de evaluación:</p>
+          <div class="helper-chips">
+            <button type="button" class="chip" onclick="fillLogin('admin', 'admin')">admin / admin</button>
+            <button type="button" class="chip" onclick="fillLogin('castillon', 'admin')">castillon / admin</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="login-footer">
+        <span>UPSJB - Sistemas de Soporte para la Toma de Decisiones 2026</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PANEL PRINCIPAL ==================== -->
+  <div id="app-container" class="app-layout hidden">
+    <!-- Barra Superior -->
+    <header class="app-header glass-header">
+      <div class="header-left">
+        <div class="logo-badge">🐾</div>
+        <div>
+          <h1 class="system-title">VETERINARIA CASTILLON <span class="tag-oltp">OLTP</span></h1>
+          <p class="header-desc">SSTDD 2026 - Conexión directa a BD_CASTILLON_VETERINARIA</p>
+        </div>
+      </div>
+
+      <!-- Indicador ETL en Tiempo Real -->
+      <div class="etl-live-badge" title="Los triggers en SQL Server replican cada inserción/edición al instante">
+        <span class="pulse-dot"></span>
+        <div class="etl-info">
+          <strong>ETL Tiempo Real Activo</strong>
+          <small>Triggers ➔ BD_CONSOLIDADO ➔ Power BI</small>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="user-pill">
+          <span class="user-avatar">👤</span>
+          <span id="display-user-name">Administrador</span>
+        </div>
+        <button id="btn-logout" class="btn btn-outline-danger btn-sm" onclick="logout()">
+          Cerrar Sesión
+        </button>
+      </div>
+    </header>
+
+    <!-- Barra de Navegación de Pestañas -->
+    <nav class="nav-tabs-bar">
+      <button class="nav-tab active" id="tab-btn-personas" onclick="switchTab('personas')">
+        <span class="tab-icon">👥</span>
+        <span>CRUD 1: Registro de Personas / Clientes</span>
+      </button>
+      <button class="nav-tab" id="tab-btn-productos" onclick="switchTab('productos')">
+        <span class="tab-icon">💊</span>
+        <span>CRUD 2: Catálogo de Productos</span>
+      </button>
+      <button class="nav-tab" id="tab-btn-etl" onclick="switchTab('etl')">
+        <span class="tab-icon">⚡</span>
+        <span>Monitor de Replicación ETL</span>
+      </button>
+    </nav>
+
+    <!-- Resumen de Métricas Rápidas -->
+    <section class="stats-ribbon">
+      <div class="stat-card">
+        <span class="stat-num" id="stat-personas">--</span>
+        <span class="stat-label">Personas Registradas</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num" id="stat-clientes">--</span>
+        <span class="stat-label">Clientes Activos</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-num" id="stat-productos">--</span>
+        <span class="stat-label">Productos Veterinarios</span>
+      </div>
+      <div class="stat-card stat-accent">
+        <span class="stat-num" id="stat-consolidado">--</span>
+        <span class="stat-label">Sincronizados en BD_CONSOLIDADO</span>
+      </div>
+    </section>
+
+    <!-- Contenido Principal -->
+    <main class="app-main">
+
+      <!-- ================= SECCIÓN PERSONAS (CRUD 1) ================= -->
+      <section id="section-personas" class="tab-content active">
+        
+        <!-- Barra de Acciones y Búsqueda -->
+        <div class="toolbar-card glass-panel">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-personas" placeholder="BUSCAR: Ingrese DNI, Nombre, Apellido o Celular..." oninput="debounceSearchPersonas()">
+          </div>
+          <div class="actions-group">
+            <button class="btn btn-success" onclick="abrirModalPersona('nuevo')">
+              <span>➕ NUEVO REGISTRO</span>
+            </button>
+            <button class="btn btn-outline" onclick="cargarPersonas()">
+              <span>🔄 Refrescar</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabla / Grid de Personas -->
+        <div class="table-container glass-panel">
+          <div class="table-header-info">
+            <h3>Grilla de Personas (Tabla: vet.PERSONA)</h3>
+            <span class="table-badge" id="personas-count">Cargando registros...</span>
+          </div>
+          <div class="responsive-table">
+            <table class="data-table" id="table-personas">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>DNI</th>
+                  <th>NOMBRE</th>
+                  <th>APE. PATERNO</th>
+                  <th>APE. MATERNO</th>
+                  <th>GÉNERO</th>
+                  <th>CELULAR</th>
+                  <th>DIRECCIÓN</th>
+                  <th>EST. CIVIL</th>
+                  <th>ESTADO</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-personas">
+                <tr><td colspan="11" class="text-center">Cargando datos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ================= SECCIÓN PRODUCTOS (CRUD 2) ================= -->
+      <section id="section-productos" class="tab-content">
+        
+        <div class="toolbar-card glass-panel">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-productos" placeholder="BUSCAR: Nombre del producto, descripción o categoría..." oninput="debounceSearchProductos()">
+          </div>
+          <div class="actions-group">
+            <button class="btn btn-success" onclick="abrirModalProducto('nuevo')">
+              <span>➕ NUEVO PRODUCTO</span>
+            </button>
+            <button class="btn btn-outline" onclick="cargarProductos()">
+              <span>🔄 Refrescar</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-container glass-panel">
+          <div class="table-header-info">
+            <h3>Grilla de Productos (Tabla: vet.PRODUCTO)</h3>
+            <span class="table-badge" id="productos-count">Cargando productos...</span>
+          </div>
+          <div class="responsive-table">
+            <table class="data-table" id="table-productos">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>PRODUCTO</th>
+                  <th>CATEGORÍA</th>
+                  <th>UNIDAD</th>
+                  <th>PRECIO UNIT. (S/)</th>
+                  <th>STOCK ACTUAL</th>
+                  <th>ESTADO</th>
+                  <th>ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-productos">
+                <tr><td colspan="8" class="text-center">Cargando datos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ================= SECCIÓN MONITOR ETL ================= -->
+      <section id="section-etl" class="tab-content">
+        <div class="glass-panel monitor-card">
+          <h2>📊 Flujo ETL Automático (OLTP ➔ OLAP Consolidado ➔ Power BI)</h2>
+          <p class="monitor-intro">
+            Este módulo evidencia que cada operación realizada en esta web interactúa con SQL Server y activa los desencadenadores (triggers) en tiempo real.
+          </p>
+
+          <div class="flow-diagram">
+            <div class="flow-step">
+              <div class="step-icon">💻</div>
+              <h4>1. Sistema Web</h4>
+              <p>Formulario CRUD envía petición REST al API.</p>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div class="flow-step">
+              <div class="step-icon">🗄️</div>
+              <h4>2. BD Transaccional (OLTP)</h4>
+              <p>Guarda en <code>vet.PERSONA</code> / <code>vet.PRODUCTO</code>.</p>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div class="flow-step pulse-step">
+              <div class="step-icon">⚡</div>
+              <h4>3. Trigger Automático</h4>
+              <p><code>TRG_ETL_PERSONA</code> ejecuta <code>SP_SYNC_CLIENTES</code>.</p>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div class="flow-step">
+              <div class="step-icon">📦</div>
+              <h4>4. BD Consolidada</h4>
+              <p>Carga en <code>CLIENTE_CONSOLIDADO</code> en la misma transacción.</p>
+            </div>
+            <div class="flow-arrow">➔</div>
+            <div class="flow-step highlight-step">
+              <div class="step-icon">📈</div>
+              <h4>5. Power BI Cloud</h4>
+              <p>DirectQuery / Auto-refresh refleja el cambio de inmediato.</p>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <button class="btn btn-primary" onclick="cargarMetricas()">
+              🔄 Probar y Actualizar Métricas de Replicación
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ==================== MODAL FORMULARIO PERSONA (EXACTO A IMAGEN 2) ==================== -->
+  <div id="modal-persona" class="modal-backdrop hidden">
+    <div class="modal-box glass-panel modal-lg">
+      <div class="modal-header">
+        <h2 id="modal-persona-title">REGISTRO DE PERSONA</h2>
+        <button type="button" class="btn-close" onclick="cerrarModalPersona()">✕</button>
+      </div>
+
+      <form id="form-persona" onsubmit="guardarPersona(event)">
+        <input type="hidden" id="p-id">
+
+        <div class="form-grid">
+          <!-- DNI -->
+          <div class="form-group">
+            <label for="p-dni">DNI <span class="req">*</span></label>
+            <input type="text" id="p-dni" maxlength="8" pattern="\d{8}" required placeholder="Ej: 12345678">
+          </div>
+
+          <!-- FECHA NACIMIENTO -->
+          <div class="form-group">
+            <label for="p-fechnac">FECH_NAC</label>
+            <input type="date" id="p-fechnac">
+          </div>
+
+          <!-- NOMBRE -->
+          <div class="form-group">
+            <label for="p-nombre">NOMBRE <span class="req">*</span></label>
+            <input type="text" id="p-nombre" maxlength="30" required placeholder="Ej: LUIS">
+          </div>
+
+          <!-- GÉNERO -->
+          <div class="form-group">
+            <label for="p-genero">GENERO</label>
+            <select id="p-genero">
+              <option value="M">MASCULINO</option>
+              <option value="F">FEMENINO</option>
+            </select>
+          </div>
+
+          <!-- APELLIDO PATERNO -->
+          <div class="form-group">
+            <label for="p-apepat">APE. PATERNO <span class="req">*</span></label>
+            <input type="text" id="p-apepat" maxlength="30" required placeholder="Ej: CASTILLON">
+          </div>
+
+          <!-- APELLIDO MATERNO -->
+          <div class="form-group">
+            <label for="p-apemat">APE. MATERNO</label>
+            <input type="text" id="p-apemat" maxlength="30" placeholder="Ej: SIGUAS">
+          </div>
+
+          <!-- CELULAR -->
+          <div class="form-group">
+            <label for="p-celular">CELAR</label>
+            <input type="text" id="p-celular" maxlength="10" placeholder="Ej: 123456789">
+          </div>
+
+          <!-- CORREO -->
+          <div class="form-group">
+            <label for="p-correo">CORREO</label>
+            <input type="email" id="p-correo" maxlength="30" placeholder="correo@ejemplo.com">
+          </div>
+
+          <!-- ESTADO CIVIL -->
+          <div class="form-group">
+            <label for="p-estcivil">EST_CIVIL</label>
+            <select id="p-estcivil">
+              <option value="SO">SOLTERO (SO)</option>
+              <option value="CA">CASADO (CA)</option>
+              <option value="DI">DIVORCIADO (DI)</option>
+              <option value="VI">VIUDO (VI)</option>
+            </select>
+          </div>
+
+          <!-- DIRECCIÓN -->
+          <div class="form-group span-2">
+            <label for="p-direccion">DIRECCION</label>
+            <input type="text" id="p-direccion" maxlength="120" placeholder="Ej: AV. LOS OLVIDADOS DE DIOS S/N">
+          </div>
+        </div>
+
+        <!-- Botonera exacta al dibujo: NUEVO, GUARDAR, EDITAR, ELIMINAR, CANCELAR, SALIR -->
+        <div class="modal-footer-toolbar">
+          <div class="footer-left">
+            <button type="button" class="btn btn-secondary" onclick="limpiarFormPersona()">NUEVO</button>
+            <button type="submit" class="btn btn-primary" id="btn-p-guardar">GUARDAR</button>
+            <button type="button" class="btn btn-warning" id="btn-p-editar" onclick="activarEdicionPersona()">EDITAR</button>
+            <button type="button" class="btn btn-danger" id="btn-p-eliminar" onclick="eliminarPersonaActual()">ELIMINAR</button>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-outline" onclick="limpiarFormPersona()">CANCELAR</button>
+            <button type="button" class="btn btn-dark" onclick="cerrarModalPersona()">SALIR</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL FORMULARIO PRODUCTO ==================== -->
+  <div id="modal-producto" class="modal-backdrop hidden">
+    <div class="modal-box glass-panel">
+      <div class="modal-header">
+        <h2 id="modal-producto-title">REGISTRO DE PRODUCTO</h2>
+        <button type="button" class="btn-close" onclick="cerrarModalProducto()">✕</button>
+      </div>
+
+      <form id="form-producto" onsubmit="guardarProducto(event)">
+        <input type="hidden" id="prod-id">
+
+        <div class="form-group">
+          <label for="prod-nombre">NOMBRE DEL PRODUCTO <span class="req">*</span></label>
+          <input type="text" id="prod-nombre" maxlength="100" required placeholder="Ej: Amoxicilina 500mg">
+        </div>
+
+        <div class="form-group">
+          <label for="prod-desc">DESCRIPCIÓN</label>
+          <textarea id="prod-desc" rows="2" maxlength="250" placeholder="Descripción del producto farmacéutico..."></textarea>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="prod-categoria">CATEGORÍA</label>
+            <select id="prod-categoria"></select>
+          </div>
+          <div class="form-group">
+            <label for="prod-unidad">UNIDAD DE MEDIDA</label>
+            <select id="prod-unidad"></select>
+          </div>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="prod-precio">PRECIO UNITARIO (S/) <span class="req">*</span></label>
+            <input type="number" id="prod-precio" step="0.01" min="0" required placeholder="0.00">
+          </div>
+          <div class="form-group">
+            <label for="prod-stock">STOCK ACTUAL</label>
+            <input type="number" id="prod-stock" min="0" placeholder="0">
+          </div>
+        </div>
+
+        <div class="modal-footer-toolbar">
+          <div class="footer-left">
+            <button type="button" class="btn btn-secondary" onclick="limpiarFormProducto()">NUEVO</button>
+            <button type="submit" class="btn btn-primary">GUARDAR</button>
+            <button type="button" class="btn btn-danger" id="btn-prod-eliminar" onclick="eliminarProductoActual()">ELIMINAR</button>
+          </div>
+          <div class="footer-right">
+            <button type="button" class="btn btn-dark" onclick="cerrarModalProducto()">SALIR</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast de Notificaciones -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
