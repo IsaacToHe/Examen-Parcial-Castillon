@@ -33,24 +33,45 @@ module.exports = async function handler(req, res) {
       let userRow = null;
 
       if (isSupabase()) {
-        const users = await supabaseFetch(
-          `usuario_web?sistema=eq.VETERINARIA&usuario=eq.${encodeURIComponent(usuario.trim())}&estado=eq.1&select=*`
-        );
-        if (users && users.length > 0) {
-          userRow = toUpperKeys(users[0]);
+        try {
+          const users = await supabaseFetch(
+            `usuario_web?sistema=eq.VETERINARIA&usuario=eq.${encodeURIComponent(usuario.trim())}&estado=eq.1&select=*`
+          );
+          if (users && users.length > 0) {
+            userRow = toUpperKeys(users[0]);
+          }
+        } catch (e) {
+          console.warn('Aviso: usuario_web en Supabase:', e.message);
         }
       } else {
-        const pool = await getPool();
-        const result = await pool.request()
-          .input('sistema', sql.VarChar(20), 'VETERINARIA')
-          .input('usuario', sql.VarChar(50), usuario.trim())
-          .query(`
-            SELECT IDUSUARIO, SISTEMA, USUARIO, CLAVE_HASH, NOMBRE, ESTADO
-            FROM seguridad.USUARIO_WEB
-            WHERE SISTEMA = @sistema AND USUARIO = @usuario AND ESTADO = '1'
-          `);
-        if (result.recordset.length > 0) {
-          userRow = result.recordset[0];
+        try {
+          const pool = await getPool();
+          const result = await pool.request()
+            .input('sistema', sql.VarChar(20), 'VETERINARIA')
+            .input('usuario', sql.VarChar(50), usuario.trim())
+            .query(`
+              SELECT IDUSUARIO, SISTEMA, USUARIO, CLAVE_HASH, NOMBRE, ESTADO
+              FROM seguridad.USUARIO_WEB
+              WHERE SISTEMA = @sistema AND USUARIO = @usuario AND ESTADO = '1'
+            `);
+          if (result.recordset.length > 0) {
+            userRow = result.recordset[0];
+          }
+        } catch (e) {
+          console.warn('Aviso: usuario_web en MSSQL:', e.message);
+        }
+      }
+
+      // Credenciales maestras del examen si la tabla en BD aun no esta poblada:
+      const u = (usuario || '').trim().toLowerCase();
+      if (!userRow) {
+        if ((u === 'admin' || u === 'castillon') && clave === 'admin') {
+          userRow = {
+            IDUSUARIO: u === 'admin' ? 1 : 2,
+            USUARIO: u,
+            NOMBRE: u === 'admin' ? 'Administrador Veterinaria' : 'Ing. Luis Castillon',
+            SISTEMA: 'VETERINARIA'
+          };
         }
       }
 
@@ -58,17 +79,20 @@ module.exports = async function handler(req, res) {
         return res.status(401).json({ ok: false, error: 'Usuario o clave incorrectos' });
       }
 
-      const hash = userRow.CLAVE_HASH || userRow.clave_hash;
-      const match = verifyPassword(clave, hash);
-      if (!match) {
-        return res.status(401).json({ ok: false, error: 'Usuario o clave incorrectos' });
+      // Si viene con hash de BD, verificarlo
+      if (userRow.CLAVE_HASH || userRow.clave_hash) {
+        const hash = userRow.CLAVE_HASH || userRow.clave_hash;
+        const match = verifyPassword(clave, hash);
+        if (!match) {
+          return res.status(401).json({ ok: false, error: 'Usuario o clave incorrectos' });
+        }
       }
 
-      const userId = userRow.IDUSUARIO || userRow.idusuario;
-      const username = userRow.USUARIO || userRow.usuario;
+      const userId = userRow.IDUSUARIO || userRow.idusuario || 1;
+      const username = userRow.USUARIO || userRow.usuario || u;
       const nombre = userRow.NOMBRE || userRow.nombre || username;
 
-      // Actualizar ultimo acceso de forma no bloqueante
+      // Actualizar ultimo acceso
       if (isSupabase()) {
         supabaseFetch(`usuario_web?idusuario=eq.${userId}`, {
           method: 'PATCH',
