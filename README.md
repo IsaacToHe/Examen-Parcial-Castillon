@@ -62,33 +62,6 @@ sistemas-web/
 
 ---
 
-## 🚀 Paso a Paso: Subir el Código a GitHub
-
-1. **Crear el repositorio en GitHub:**
-   * Ingresa a [https://github.com/new](https://github.com/new).
-   * Nombre del repositorio: `sistemas-web-sstdd` (o el nombre que prefieras).
-   * Tipo: **Público** (o Privado).
-   * **No** marques las opciones de agregar README, .gitignore o licencia (ya existen localmente).
-   * Haz clic en **Create repository**.
-
-2. **Configurar tu usuario de Git (si aún no lo hiciste):**
-   ```bash
-   git config --global user.name "Tu Nombre o Usuario"
-   git config --global user.email "tu_correo@upsjb.edu.pe"
-   ```
-
-3. **Hacer el primer commit y subir:**
-   ```bash
-   cd "c:\Users\UPSJB\Downloads\Examen Parcial\sistemas-web"
-   git branch -m main
-   git add .
-   git commit -m "feat: sistemas web veterinaria y samar con ETL en tiempo real y configuracion Vercel"
-   git remote add origin https://github.com/TU_USUARIO/sistemas-web-sstdd.git
-   git push -u origin main
-   ```
-
----
-
 ## ☁️ Paso a Paso: Desplegar en Vercel (Gratis)
 
 Puedes desplegar **ambos sistemas** en dominios gratuitos independientes (ej. `veterinaria-upsjb.vercel.app` y `samar-upsjb.vercel.app`):
