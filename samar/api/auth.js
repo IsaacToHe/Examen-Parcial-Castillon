@@ -1,4 +1,4 @@
-const { getPool, sql } = require('./_db');
+const { isSupabase, supabaseFetch, toUpperKeys, getPool, sql } = require('./_db');
 const { verifyPassword, createToken, verifyToken, extractToken } = require('./_auth');
 
 module.exports = async function handler(req, res) {
@@ -26,34 +26,60 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ ok: false, error: 'Usuario y clave requeridos' });
       }
 
-      const pool = await getPool();
-      const result = await pool.request()
-        .input('sistema', sql.VarChar(20), 'SAMAR')
-        .input('usuario', sql.VarChar(50), usuario.trim())
-        .query(`
-          SELECT IDUSUARIO, SISTEMA, USUARIO, CLAVE_HASH, NOMBRE, ESTADO
-          FROM seguridad.USUARIO_WEB
-          WHERE SISTEMA = @sistema AND USUARIO = @usuario AND ESTADO = '1'
-        `);
+      let userRow = null;
 
-      if (result.recordset.length === 0) {
+      if (isSupabase()) {
+        const users = await supabaseFetch(
+          `usuario_web?sistema=eq.SAMAR&usuario=eq.${encodeURIComponent(usuario.trim())}&estado=eq.1&select=*`
+        );
+        if (users && users.length > 0) {
+          userRow = toUpperKeys(users[0]);
+        }
+      } else {
+        const pool = await getPool();
+        const result = await pool.request()
+          .input('sistema', sql.VarChar(20), 'SAMAR')
+          .input('usuario', sql.VarChar(50), usuario.trim())
+          .query(`
+            SELECT IDUSUARIO, SISTEMA, USUARIO, CLAVE_HASH, NOMBRE, ESTADO
+            FROM seguridad.USUARIO_WEB
+            WHERE SISTEMA = @sistema AND USUARIO = @usuario AND ESTADO = '1'
+          `);
+        if (result.recordset.length > 0) {
+          userRow = result.recordset[0];
+        }
+      }
+
+      if (!userRow) {
         return res.status(401).json({ ok: false, error: 'Usuario o clave incorrectos' });
       }
 
-      const userRow = result.recordset[0];
-      const match = verifyPassword(clave, userRow.CLAVE_HASH);
+      const hash = userRow.CLAVE_HASH || userRow.clave_hash;
+      const match = verifyPassword(clave, hash);
       if (!match) {
         return res.status(401).json({ ok: false, error: 'Usuario o clave incorrectos' });
       }
 
-      await pool.request()
-        .input('id', sql.Int, userRow.IDUSUARIO)
-        .query(`UPDATE seguridad.USUARIO_WEB SET ULTIMO_ACCESO = SYSDATETIME() WHERE IDUSUARIO = @id`);
+      const userId = userRow.IDUSUARIO || userRow.idusuario;
+      const username = userRow.USUARIO || userRow.usuario;
+      const nombre = userRow.NOMBRE || userRow.nombre || username;
+
+      if (isSupabase()) {
+        supabaseFetch(`usuario_web?idusuario=eq.${userId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ ultimo_acceso: new Date().toISOString() })
+        }).catch(() => {});
+      } else {
+        getPool().then(p => {
+          p.request().input('id', sql.Int, userId)
+            .query(`UPDATE seguridad.USUARIO_WEB SET ULTIMO_ACCESO = SYSDATETIME() WHERE IDUSUARIO = @id`);
+        }).catch(() => {});
+      }
 
       const token = createToken({
-        id: userRow.IDUSUARIO,
-        usuario: userRow.USUARIO,
-        nombre: userRow.NOMBRE || userRow.USUARIO,
+        id: userId,
+        usuario: username,
+        nombre: nombre,
         sistema: 'SAMAR'
       });
 
@@ -61,17 +87,17 @@ module.exports = async function handler(req, res) {
         ok: true,
         token,
         usuario: {
-          id: userRow.IDUSUARIO,
-          usuario: userRow.USUARIO,
-          nombre: userRow.NOMBRE || userRow.USUARIO,
+          id: userId,
+          usuario: username,
+          nombre: nombre,
           sistema: 'SAMAR'
         }
       });
     } catch (err) {
       console.error('Error en login Samar:', err);
-      return res.status(500).json({ ok: false, error: 'Error del servidor: ' + err.message });
+      return res.status(500).json({ ok: false, error: err.message });
     }
   }
 
-  return res.status(405).json({ ok: false, error: 'Metodo no permitido' });
+  return res.status(405).json({ ok: false, error: 'Método no soportado' });
 };

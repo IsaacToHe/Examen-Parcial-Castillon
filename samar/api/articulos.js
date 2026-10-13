@@ -1,4 +1,4 @@
-const { getPool, sql } = require('./_db');
+const { isSupabase, supabaseFetch, toUpperKeys, getPool, sql } = require('./_db');
 const { verifyToken, extractToken } = require('./_auth');
 
 module.exports = async function handler(req, res) {
@@ -15,11 +15,20 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const pool = await getPool();
-
     // GET: Listar o buscar articulos
     if (req.method === 'GET') {
       const q = req.query.q ? req.query.q.trim() : '';
+
+      if (isSupabase()) {
+        let endpoint = 'samar_articulos?select=*&order=codigo_producto.desc&limit=100';
+        if (q) {
+          endpoint += `&or=(codigo_producto.ilike.*${encodeURIComponent(q)}*,nombre.ilike.*${encodeURIComponent(q)}*,categoria.ilike.*${encodeURIComponent(q)}*)`;
+        }
+        const data = await supabaseFetch(endpoint);
+        return res.status(200).json({ ok: true, data: (data || []).map(toUpperKeys) });
+      }
+
+      const pool = await getPool();
       let query = `
         SELECT TOP 100
           CODIGO_PRODUCTO,
@@ -52,6 +61,41 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ ok: false, error: 'Nombre del artículo requerido' });
       }
 
+      if (isSupabase()) {
+        let finalCodigo = codigo_producto ? codigo_producto.trim() : null;
+        if (!finalCodigo) {
+          const list = await supabaseFetch('samar_articulos?select=codigo_producto&order=codigo_producto.desc&limit=1');
+          let nextCod = 78;
+          if (list && list.length > 0) {
+            const raw = (list[0].codigo_producto || '').replace(/\D/g, '');
+            const parsed = parseInt(raw, 10);
+            if (!isNaN(parsed)) nextCod = parsed + 1;
+          }
+          finalCodigo = 'ART' + nextCod.toString().padStart(4, '0');
+        }
+
+        const payload = {
+          codigo_producto: finalCodigo,
+          nombre: nombre.trim(),
+          categoria: (categoria || 'General').trim(),
+          precio_unitario: parseFloat(precio_unitario) || 0,
+          costo_unitario: parseFloat(costo_unitario) || 0
+        };
+
+        await supabaseFetch('samar_articulos', {
+          method: 'POST',
+          headers: { 'Prefer': 'return=representation' },
+          body: JSON.stringify(payload)
+        });
+
+        return res.status(201).json({
+          ok: true,
+          message: 'Artículo registrado (Replicado a consolidado.PRODUCTO_CONSOLIDADO vía Trigger)',
+          id: finalCodigo
+        });
+      }
+
+      const pool = await getPool();
       let finalCodigo = codigo_producto ? codigo_producto.trim() : null;
       if (!finalCodigo) {
         const maxRes = await pool.request().query(`
@@ -89,6 +133,21 @@ module.exports = async function handler(req, res) {
 
       const { nombre, categoria, precio_unitario, costo_unitario } = body;
 
+      if (isSupabase()) {
+        const payload = {
+          nombre: (nombre || '').trim(),
+          categoria: (categoria || 'General').trim(),
+          precio_unitario: parseFloat(precio_unitario) || 0,
+          costo_unitario: parseFloat(costo_unitario) || 0
+        };
+        await supabaseFetch(`samar_articulos?codigo_producto=eq.${encodeURIComponent(cod)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload)
+        });
+        return res.status(200).json({ ok: true, message: 'Artículo actualizado correctamente' });
+      }
+
+      const pool = await getPool();
       await pool.request()
         .input('cod', sql.NVarChar(255), cod)
         .input('nom', sql.NVarChar(255), (nombre || '').trim())
@@ -113,6 +172,14 @@ module.exports = async function handler(req, res) {
       const cod = req.query.id;
       if (!cod) return res.status(400).json({ ok: false, error: 'Código requerido' });
 
+      if (isSupabase()) {
+        await supabaseFetch(`samar_articulos?codigo_producto=eq.${encodeURIComponent(cod)}`, {
+          method: 'DELETE'
+        });
+        return res.status(200).json({ ok: true, message: 'Artículo eliminado' });
+      }
+
+      const pool = await getPool();
       await pool.request()
         .input('cod', sql.NVarChar(255), cod)
         .query(`DELETE FROM samar.ARTICULOS WHERE CODIGO_PRODUCTO = @cod;`);

@@ -1,4 +1,4 @@
-const { getPool, sql } = require('./_db');
+const { isSupabase, supabaseFetch, toUpperKeys, getPool, sql } = require('./_db');
 const { verifyToken, extractToken } = require('./_auth');
 
 module.exports = async function handler(req, res) {
@@ -17,12 +17,19 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const pool = await getPool();
-
     // GET: Listar o buscar productos y combos
     if (req.method === 'GET') {
-      // Si piden categorias y unidades para los selects
       if (req.query.catalogos === '1') {
+        if (isSupabase()) {
+          const cats = await supabaseFetch('vet_categoria?select=idcategoria,nomcategoria&order=nomcategoria.asc');
+          const ums = await supabaseFetch('vet_unidad_medida?select=idunidad_medida,nomunidad_medida&order=nomunidad_medida.asc');
+          return res.status(200).json({
+            ok: true,
+            categorias: (cats || []).map(toUpperKeys),
+            unidades: (ums || []).map(toUpperKeys)
+          });
+        }
+        const pool = await getPool();
         const catRes = await pool.request().query(`SELECT IDCATEGORIA, NOMCATEGORIA FROM vet.CATEGORIA ORDER BY NOMCATEGORIA`);
         const umRes = await pool.request().query(`SELECT IDUNIDAD_MEDIDA, NOMUNIDAD_MEDIDA FROM vet.UNIDAD_MEDIDA ORDER BY NOMUNIDAD_MEDIDA`);
         return res.status(200).json({
@@ -33,6 +40,23 @@ module.exports = async function handler(req, res) {
       }
 
       const q = req.query.q ? req.query.q.trim() : '';
+
+      if (isSupabase()) {
+        let endpoint = 'vet_producto?select=idproducto,nomproducto,descripcion,precio_unitario,stock_actual,idcategoria,idunidad_medida,estado,vet_categoria(nomcategoria),vet_unidad_medida(nomunidad_medida)&order=idproducto.desc&limit=100';
+        if (q) {
+          endpoint += `&or=(nomproducto.ilike.*${encodeURIComponent(q)}*,descripcion.ilike.*${encodeURIComponent(q)}*)`;
+        }
+        const data = await supabaseFetch(endpoint);
+        const mapped = (data || []).map(p => {
+          const upper = toUpperKeys(p);
+          upper.NOMCATEGORIA = p.vet_categoria?.nomcategoria || '';
+          upper.NOMUNIDAD_MEDIDA = p.vet_unidad_medida?.nomunidad_medida || '';
+          return upper;
+        });
+        return res.status(200).json({ ok: true, data: mapped });
+      }
+
+      const pool = await getPool();
       let query = `
         SELECT TOP 100
           p.IDPRODUCTO,
@@ -72,6 +96,31 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ ok: false, error: 'Nombre de producto y precio son obligatorios' });
       }
 
+      if (isSupabase()) {
+        const payload = {
+          nomproducto: nomproducto.trim().slice(0, 100),
+          descripcion: (descripcion || '').trim().slice(0, 250),
+          precio_unitario: parseFloat(precio_unitario) || 0,
+          stock_actual: parseFloat(stock_actual) || 0,
+          idcategoria: idcategoria ? parseInt(idcategoria, 10) : 1,
+          idunidad_medida: idunidad_medida ? parseInt(idunidad_medida, 10) : 1,
+          usucre: user.usuario,
+          estado: '1'
+        };
+        const created = await supabaseFetch('vet_producto', {
+          method: 'POST',
+          headers: { 'Prefer': 'return=representation' },
+          body: JSON.stringify(payload)
+        });
+        const newId = Array.isArray(created) ? created[0].idproducto : created?.idproducto;
+        return res.status(201).json({
+          ok: true,
+          message: 'Producto registrado (Replicado a consolidado.PRODUCTO_CONSOLIDADO vía Trigger)',
+          id: newId
+        });
+      }
+
+      const pool = await getPool();
       const request = pool.request()
         .input('nomproducto', sql.VarChar(100), nomproducto.trim().slice(0, 100))
         .input('descripcion', sql.NVarChar(250), (descripcion || '').trim().slice(0, 250))
@@ -104,6 +153,26 @@ module.exports = async function handler(req, res) {
 
       const { nomproducto, descripcion, precio_unitario, stock_actual, idcategoria, idunidad_medida, estado } = body;
 
+      if (isSupabase()) {
+        const payload = {
+          nomproducto: (nomproducto || '').trim().slice(0, 100),
+          descripcion: (descripcion || '').trim().slice(0, 250),
+          precio_unitario: parseFloat(precio_unitario) || 0,
+          stock_actual: parseFloat(stock_actual) || 0,
+          idcategoria: idcategoria ? parseInt(idcategoria, 10) : 1,
+          idunidad_medida: idunidad_medida ? parseInt(idunidad_medida, 10) : 1,
+          estado: (estado || '1').slice(0, 1),
+          usumod: user.usuario,
+          fecmod: new Date().toISOString()
+        };
+        await supabaseFetch(`vet_producto?idproducto=eq.${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload)
+        });
+        return res.status(200).json({ ok: true, message: 'Producto actualizado con éxito' });
+      }
+
+      const pool = await getPool();
       await pool.request()
         .input('id', sql.Int, id)
         .input('nomproducto', sql.VarChar(100), nomproducto.trim().slice(0, 100))
@@ -137,6 +206,15 @@ module.exports = async function handler(req, res) {
       const id = parseInt(req.query.id, 10);
       if (!id) return res.status(400).json({ ok: false, error: 'ID requerido' });
 
+      if (isSupabase()) {
+        await supabaseFetch(`vet_producto?idproducto=eq.${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ estado: '0', usumod: user.usuario, fecmod: new Date().toISOString() })
+        });
+        return res.status(200).json({ ok: true, message: 'Producto desactivado' });
+      }
+
+      const pool = await getPool();
       await pool.request()
         .input('id', sql.Int, id)
         .input('usumod', sql.VarChar(30), user.usuario)

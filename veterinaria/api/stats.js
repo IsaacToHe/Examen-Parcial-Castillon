@@ -1,4 +1,4 @@
-const { getPool } = require('./_db');
+const { isSupabase, supabaseFetchCount, getPool } = require('./_db');
 const { verifyToken, extractToken } = require('./_auth');
 
 module.exports = async function handler(req, res) {
@@ -13,6 +13,27 @@ module.exports = async function handler(req, res) {
   if (!user) return res.status(401).json({ ok: false, error: 'No autorizado' });
 
   try {
+    if (isSupabase()) {
+      const [totalPersonas, totalProductos, totalConsolidadoClientes, totalConsolidadoProductos] = await Promise.all([
+        supabaseFetchCount('vet_persona?estado=eq.1'),
+        supabaseFetchCount('vet_producto?estado=eq.1'),
+        supabaseFetchCount('cliente_consolidado'),
+        supabaseFetchCount('producto_consolidado')
+      ]);
+
+      return res.status(200).json({
+        ok: true,
+        data: {
+          totalPersonas,
+          totalClientes: totalPersonas,
+          totalProductos,
+          totalConsolidadoClientes,
+          totalConsolidadoProductos,
+          ultimaSincro: new Date().toISOString()
+        }
+      });
+    }
+
     const pool = await getPool();
     const statsQuery = `
       SELECT

@@ -1,4 +1,4 @@
-const { getPool, sql } = require('./_db');
+const { isSupabase, supabaseFetch, toUpperKeys, getPool, sql } = require('./_db');
 const { verifyToken, extractToken } = require('./_auth');
 
 module.exports = async function handler(req, res) {
@@ -15,11 +15,20 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const pool = await getPool();
-
-    // GET: Listar o buscar clientes en samar.CLIENTES
+    // GET: Listar o buscar clientes en samar_clientes
     if (req.method === 'GET') {
       const q = req.query.q ? req.query.q.trim() : '';
+
+      if (isSupabase()) {
+        let endpoint = 'samar_clientes?select=*&order=id_cliente.desc&limit=100';
+        if (q) {
+          endpoint += `&or=(id_cliente.ilike.*${encodeURIComponent(q)}*,nombre.ilike.*${encodeURIComponent(q)}*,apellido.ilike.*${encodeURIComponent(q)}*,residencia.ilike.*${encodeURIComponent(q)}*)`;
+        }
+        const data = await supabaseFetch(endpoint);
+        return res.status(200).json({ ok: true, data: (data || []).map(toUpperKeys) });
+      }
+
+      const pool = await getPool();
       let query = `
         SELECT TOP 100
           ID_CLIENTE,
@@ -45,7 +54,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ ok: true, data: result.recordset });
     }
 
-    // POST: Crear nuevo Cliente en samar.CLIENTES
+    // POST: Crear nuevo Cliente en samar_clientes
     if (req.method === 'POST') {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
       const { id_cliente, nombre, apellido, edad, estado_civil, residencia, origen } = body;
@@ -54,7 +63,43 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ ok: false, error: 'Nombre y Apellido son obligatorios' });
       }
 
-      // Si no viene ID, generar el siguiente CLI#####
+      if (isSupabase()) {
+        let finalId = id_cliente ? id_cliente.trim() : null;
+        if (!finalId) {
+          const list = await supabaseFetch('samar_clientes?select=id_cliente&order=id_cliente.desc&limit=1');
+          let nextNum = 1001;
+          if (list && list.length > 0) {
+            const raw = (list[0].id_cliente || '').replace(/\D/g, '');
+            const parsed = parseInt(raw, 10);
+            if (!isNaN(parsed)) nextNum = parsed + 1;
+          }
+          finalId = 'CLI' + nextNum.toString().padStart(5, '0');
+        }
+
+        const payload = {
+          id_cliente: finalId,
+          nombre: nombre.trim(),
+          apellido: apellido.trim(),
+          edad: edad ? parseInt(edad, 10) : null,
+          estado_civil: estado_civil || 'Soltero',
+          residencia: residencia || 'Santiago',
+          origen: origen || 'Santiago'
+        };
+
+        await supabaseFetch('samar_clientes', {
+          method: 'POST',
+          headers: { 'Prefer': 'return=representation' },
+          body: JSON.stringify(payload)
+        });
+
+        return res.status(201).json({
+          ok: true,
+          message: 'Cliente creado con éxito (Replicado a consolidado.CLIENTE_CONSOLIDADO vía Trigger)',
+          id: finalId
+        });
+      }
+
+      const pool = await getPool();
       let finalId = id_cliente ? id_cliente.trim() : null;
       if (!finalId) {
         const maxRes = await pool.request().query(`
@@ -94,6 +139,23 @@ module.exports = async function handler(req, res) {
 
       const { nombre, apellido, edad, estado_civil, residencia, origen } = body;
 
+      if (isSupabase()) {
+        const payload = {
+          nombre: (nombre || '').trim(),
+          apellido: (apellido || '').trim(),
+          edad: edad ? parseInt(edad, 10) : null,
+          estado_civil: estado_civil || 'Soltero',
+          residencia: residencia || '',
+          origen: origen || ''
+        };
+        await supabaseFetch(`samar_clientes?id_cliente=eq.${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload)
+        });
+        return res.status(200).json({ ok: true, message: 'Cliente actualizado correctamente' });
+      }
+
+      const pool = await getPool();
       await pool.request()
         .input('id', sql.NVarChar(255), id)
         .input('nom', sql.NVarChar(255), (nombre || '').trim())
@@ -122,6 +184,14 @@ module.exports = async function handler(req, res) {
       const id = req.query.id;
       if (!id) return res.status(400).json({ ok: false, error: 'ID requerido' });
 
+      if (isSupabase()) {
+        await supabaseFetch(`samar_clientes?id_cliente=eq.${encodeURIComponent(id)}`, {
+          method: 'DELETE'
+        });
+        return res.status(200).json({ ok: true, message: 'Cliente eliminado correctamente' });
+      }
+
+      const pool = await getPool();
       await pool.request()
         .input('id', sql.NVarChar(255), id)
         .query(`DELETE FROM samar.CLIENTES WHERE ID_CLIENTE = @id;`);
